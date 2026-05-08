@@ -72,3 +72,4 @@ storage/ldap_client_tls.key
 
 /.phpunit.cache
 CODEBASE_INDEX.md
+COMPONENT_SERIAL_PLAN.md
