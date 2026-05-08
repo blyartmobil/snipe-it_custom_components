@@ -44,7 +44,7 @@ class Component extends SnipeModel
      */
     public $rules = [
         'name' => 'required|max:191',
-        'qty' => 'required|integer|min:1',
+        'qty' => 'nullable|integer|min:0',
         'category_id' => 'required|integer|exists:categories,id',
         'supplier_id' => 'nullable|integer|exists:suppliers,id',
         'company_id' => 'integer|nullable|exists:companies,id',
@@ -83,7 +83,6 @@ class Component extends SnipeModel
         'purchase_date',
         'min_amt',
         'order_number',
-        'qty',
         'serial',
         'notes',
     ];
@@ -164,6 +163,36 @@ class Component extends SnipeModel
     public function assets()
     {
         return $this->belongsToMany(Asset::class, 'components_assets')->withPivot('id', 'assigned_qty', 'created_at', 'created_by', 'note');
+    }
+
+    /**
+     * Establishes the component -> serials relationship (one-to-many).
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function serials()
+    {
+        return $this->hasMany(ComponentSerial::class, 'component_id');
+    }
+
+    /**
+     * Returns only available serials for this component.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function availableSerials()
+    {
+        return $this->serials()->where('status', ComponentSerial::STATUS_AVAILABLE);
+    }
+
+    /**
+     * Returns only checked-out serials for this component.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function checkedOutSerials()
+    {
+        return $this->serials()->where('status', ComponentSerial::STATUS_CHECKED_OUT);
     }
 
     protected function calculatedPurchaseCost(): Attribute
@@ -271,42 +300,18 @@ class Component extends SnipeModel
     }
 
     /**
-     * Check how many items within a component are checked out
+     * Check how many items within a component are checked out.
+     *
+     * Now derived from the serials table instead of the pivot sum.
      *
      * @author [A. Gianotto] [<snipe@snipe.net>]
-     *
      * @since  [v5.0]
      *
      * @return int
      */
     public function numCheckedOut(bool $recalculate = false)
     {
-        /**
-         * WARNING: This method caches the result, so if you're doing something
-         * that is going to change the number of checked-out items, make sure to pass
-         * 'true' as the first parameter to force this to recalculate the number of checked-out
-         * items!!!!!
-         */
-
-        // In case there are elements checked out to assets that belong to a different company
-        // than this asset and full multiple company support is on we'll remove the global scope,
-        // so they are included in the count.
-
-        // the 'sum' query returns NULL when there are zero checkouts - which can inadvertently re-trigger the following query
-        // for un-checked-out components. So we have to do this very careful process of fetching the 'attributes'
-        // of the component, then see if sum_unconstrained_assets exists as an attribute. If it doesn't, we run the
-        // query. But if it *does* exist as an attribute - even a null - we skip the query, because that means that this
-        // component was fetched using withCount() - and that count *is* accurate, even if null. We just do a quick
-        // null-coalesce at the end to zero for the null case.
-        $raw_attributes = $this->getAttributes();
-        if (! array_key_exists('sum_unconstrained_assets', $raw_attributes) || $recalculate) {
-            // This part should *only* run if the component was fetched *without* withCount() (or you've asked to recalculate)
-            // NOTE: doing this will add a 'pseudo-attribute' to the component in question, so we need to _remove_ this
-            // before we save - so that gets handled in the 'saving' callback defined in the 'booted' method, above.
-            $this->sum_unconstrained_assets = $this->unconstrainedAssets()->sum('assigned_qty') ?? 0;
-        }
-
-        return $this->sum_unconstrained_assets ?? 0;
+        return $this->serials()->where('status', ComponentSerial::STATUS_CHECKED_OUT)->count();
     }
 
     /**
@@ -368,17 +373,32 @@ class Component extends SnipeModel
     }
 
     /**
-     * Check how many items within a component are remaining
+     * Check how many items within a component are remaining.
+     *
+     * Now derived from the serials table instead of qty subtraction.
      *
      * @author [A. Gianotto] [<snipe@snipe.net>]
-     *
      * @since  [v3.0]
      *
      * @return int
      */
     public function numRemaining()
     {
-        return $this->qty - $this->numCheckedOut();
+        return $this->serials()->where('status', ComponentSerial::STATUS_AVAILABLE)->count();
+    }
+
+    /**
+     * Sync the denormalized qty column from the serials count.
+     * Called whenever serials are added or removed.
+     *
+     * @return void
+     */
+    public function syncQtyFromSerials()
+    {
+        $this->qty = $this->serials()
+            ->whereNotIn('status', [ComponentSerial::STATUS_RETIRED])
+            ->count();
+        $this->saveQuietly();
     }
 
     public function totalCostSum()

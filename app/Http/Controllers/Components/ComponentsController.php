@@ -87,10 +87,8 @@ class ComponentsController extends Controller
         $component->company_id = Company::getIdForCurrentUser($request->input('company_id'));
         $component->order_number = $request->input('order_number', null);
         $component->min_amt = $request->input('min_amt', null);
-        $component->serial = $request->input('serial', null);
         $component->purchase_date = $request->input('purchase_date', null);
         $component->purchase_cost = $request->input('purchase_cost', null);
-        $component->qty = $request->input('qty');
         $component->created_by = auth()->id();
         $component->notes = $request->input('notes');
 
@@ -103,6 +101,20 @@ class ComponentsController extends Controller
         }
 
         if ($component->save()) {
+            // Process serial numbers from the textarea
+            $serialInput = $request->input('serials');
+            if (! empty($serialInput)) {
+                $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
+                $serialLines = array_filter(array_map('trim', $serialLines));
+                foreach ($serialLines as $serialNumber) {
+                    $component->serials()->create([
+                        'serial' => $serialNumber,
+                        'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
+                    ]);
+                }
+                $component->syncQtyFromSerials();
+            }
+
             return Helper::getRedirectOption($request, $component->id, 'Components')
                 ->with('success', trans('admin/components/message.create.success'));
         }
@@ -150,17 +162,6 @@ class ComponentsController extends Controller
      */
     public function update(ImageUploadRequest $request, Component $component)
     {
-        $min = $component->numCheckedOut();
-        $validator = Validator::make($request->all(), [
-            'qty' => "required|numeric|min:$min",
-        ]);
-
-        if ($validator->fails()) {
-            return redirect()->back()
-                ->withErrors($validator)
-                ->withInput();
-        }
-
         $this->authorize('update', $component);
 
         // Update the component data
@@ -173,10 +174,8 @@ class ComponentsController extends Controller
         $component->company_id = Company::getIdForCurrentUser($request->input('company_id'));
         $component->order_number = $request->input('order_number');
         $component->min_amt = $request->input('min_amt');
-        $component->serial = $request->input('serial');
         $component->purchase_date = $request->input('purchase_date');
         $component->purchase_cost = request('purchase_cost');
-        $component->qty = $request->input('qty');
         $component->notes = $request->input('notes');
 
         $component = $request->handleImages($component);
@@ -184,6 +183,38 @@ class ComponentsController extends Controller
         session()->put(['redirect_option' => $request->input('redirect_option')]);
 
         if ($component->save()) {
+            // Process serial numbers from the textarea
+            $serialInput = $request->input('serials');
+            if ($serialInput !== null) {
+                $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
+                $serialLines = array_filter(array_map('trim', $serialLines));
+
+                // Get existing serial numbers for comparison
+                $existingSerials = $component->serials->pluck('serial')->all();
+
+                // Delete serials that were removed from the textarea
+                $removedSerials = array_diff($existingSerials, $serialLines);
+                if (! empty($removedSerials)) {
+                    $component->serials()
+                        ->whereIn('serial', $removedSerials)
+                        ->where('status', \App\Models\ComponentSerial::STATUS_AVAILABLE)
+                        ->delete();
+                }
+
+                // Add new serials that don't exist yet
+                $existingNotDeleted = array_diff($existingSerials, $removedSerials);
+                foreach ($serialLines as $serialNumber) {
+                    if (! in_array($serialNumber, $existingNotDeleted)) {
+                        $component->serials()->create([
+                            'serial' => $serialNumber,
+                            'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
+                        ]);
+                    }
+                }
+
+                $component->syncQtyFromSerials();
+            }
+
             return Helper::getRedirectOption($request, $component->id, 'Components')
                 ->with('success', trans('admin/components/message.update.success'));
         }

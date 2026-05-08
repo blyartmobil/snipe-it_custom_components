@@ -207,21 +207,20 @@ class ComponentPresenter extends Presenter
         $layout = [
 
             [
-                'field' => 'name',
+                'field' => 'serial_number',
+                'searchable' => true,
+                'sortable' => true,
+                'title' => trans('admin/hardware/form.serial'),
+                'visible' => true,
+                'formatter' => 'componentsLinkFormatter',
+            ],
+            [
+                'field' => 'assigned_asset',
                 'searchable' => true,
                 'sortable' => true,
                 'title' => trans('general.name'),
                 'visible' => true,
                 'formatter' => 'polymorphicItemFormatter',
-            ],
-            [
-                'field' => 'assigned_qty',
-                'searchable' => true,
-                'sortable' => true,
-                'switchable' => true,
-                'title' => trans('general.qty'),
-                'visible' => true,
-                'footerFormatter' => 'qtySumFormatter',
             ],
             [
                 'field' => 'note',
@@ -257,6 +256,78 @@ class ComponentPresenter extends Presenter
                 'printIgnore' => true,
                 'class' => 'hidden-print',
 
+            ],
+        ];
+
+        return json_encode($layout);
+    }
+
+    /**
+     * Json Column Layout for bootstrap table - Serials tab on component detail page.
+     *
+     * @return string
+     */
+    public static function serials()
+    {
+        $layout = [
+            [
+                'field' => 'serial',
+                'searchable' => true,
+                'sortable' => true,
+                'title' => trans('admin/hardware/form.serial'),
+                'visible' => true,
+                'formatter' => 'componentsLinkFormatter',
+            ],
+            [
+                'field' => 'status',
+                'searchable' => true,
+                'sortable' => true,
+                'title' => trans('general.status'),
+                'visible' => true,
+                'formatter' => 'statusBadgeFormatter',
+            ],
+            [
+                'field' => 'asset',
+                'searchable' => true,
+                'sortable' => true,
+                'title' => trans('general.asset'),
+                'visible' => true,
+                'formatter' => 'polymorphicItemFormatter',
+            ],
+            [
+                'field' => 'checkout_at',
+                'searchable' => false,
+                'sortable' => true,
+                'title' => trans('admin/components/table.checkout_date'),
+                'visible' => true,
+                'formatter' => 'dateDisplayFormatter',
+            ],
+            [
+                'field' => 'notes',
+                'searchable' => true,
+                'sortable' => true,
+                'visible' => false,
+                'title' => trans('general.notes'),
+                'formatter' => 'notesFormatter',
+            ],
+            [
+                'field' => 'created_at',
+                'searchable' => false,
+                'sortable' => true,
+                'visible' => false,
+                'title' => trans('general.created_at'),
+                'formatter' => 'dateDisplayFormatter',
+            ],
+            [
+                'field' => 'available_actions',
+                'searchable' => false,
+                'sortable' => false,
+                'switchable' => false,
+                'title' => trans('table.actions'),
+                'visible' => true,
+                'formatter' => 'componentSerialsActionsFormatter',
+                'printIgnore' => true,
+                'class' => 'hidden-print',
             ],
         ];
 

@@ -1855,6 +1855,94 @@
         window[formatters[i] + 'InOutFormatter'] = genericCheckinCheckoutFormatter(formatters[i]);
     }
 
+    // Override componentsInOutFormatter to handle serial-based checkin
+    // Components now track individual serial numbers. Each checked-out serial
+    // row has a serial_id field instead of the old assigned_pivot_id.
+    window['componentsInOutFormatter'] = function (value, row) {
+        // For the main component listing (not a serial row):
+        // Show checkout button if checkout is available
+        if ((row.available_actions.checkout == true) && (row.user_can_checkout == true)) {
+            return '<a href="{{ config("app.url") }}/components/' + row.id + '/checkout" class="btn btn-sm bg-maroon btn-checkout" data-tooltip="true" title="{{ trans("general.checkout_tooltip") }}">{{ trans("general.checkout") }}</a>';
+        }
+        // For checked-out serial rows (have serial_id):
+        // Show checkin button linking to the serial-based checkin route
+        if ((row.available_actions.checkin == true) && (row.serial_id)) {
+            return '<a href="{{ config("app.url") }}/components/' + row.serial_id + '/checkin" class="btn btn-sm bg-purple btn-checkin" data-tooltip="true" title="{{ trans("general.checkin_tooltip") }}">{{ trans("general.checkin") }}</a>';
+        }
+        // If checkout is not available (no remaining serials) for main list:
+        if ((row.available_actions.checkout == true) && (row.user_can_checkout == false)) {
+            return '<span data-tooltip="true" title="{{ trans("general.undeployable_tooltip") }}"><a class="btn btn-sm bg-maroon btn-checkout disabled">{{ trans("general.checkout") }}</a></span>';
+        }
+        return '';
+    };
+
+    // statusBadgeFormatter - shows colored badge for serial status
+    window['statusBadgeFormatter'] = function (value, row) {
+        var badgeClass = 'badge-secondary';
+        var label = value;
+        switch (value) {
+            case 'available':
+                badgeClass = 'badge-success';
+                label = '{{ trans("general.available") }}';
+                break;
+            case 'checked_out':
+                badgeClass = 'badge-warning';
+                label = '{{ trans("general.checked_out") }}';
+                break;
+            case 'defective':
+                badgeClass = 'badge-danger';
+                label = '{{ trans("general.defective") }}';
+                break;
+            case 'retired':
+                badgeClass = 'badge-dark';
+                label = '{{ trans("general.retired") }}';
+                break;
+        }
+        return '<span class="badge ' + badgeClass + '">' + label + '</span>';
+    };
+
+    // componentSerialsActionsFormatter - checkin/delete buttons for serial rows
+    window['componentSerialsActionsFormatter'] = function (value, row) {
+        var buttons = '';
+        // Checkin button for checked-out serials
+        if (row.available_actions && row.available_actions.checkin) {
+            buttons += '<a href="{{ config("app.url") }}/components/' + row.id + '/checkin" class="btn btn-sm bg-purple btn-checkin" data-tooltip="true" title="{{ trans("general.checkin_tooltip") }}">{{ trans("general.checkin") }}</a>&nbsp;';
+        }
+        // Delete button for non-checked-out serials
+        if (row.available_actions && row.available_actions.delete) {
+            buttons += '<a href="#" class="btn btn-sm btn-danger" data-tooltip="true" title="{{ trans("general.delete") }}" onclick="deleteSerial(' + row.id + '); return false;">' +
+                '<i class="fa fa-trash"></i>' +
+            '</a>';
+        }
+        return buttons;
+    };
+
+    // deleteSerial helper function
+    window['deleteSerial'] = function(serialId) {
+        if (!confirm('{{ trans("general.sure_to_delete") }}')) return;
+        var csrf_token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+        fetch('{{ config("app.url") }}/api/v1/components/serials/' + serialId, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': csrf_token,
+                'Accept': 'application/json',
+            }
+        }).then(function(response) {
+            if (response.ok) {
+                // Refresh the current table
+                if (typeof $ !== 'undefined') {
+                    $('#bootstrap-table').bootstrapTable('refresh');
+                } else {
+                    window.location.reload();
+                }
+            } else {
+                return response.json().then(function(data) {
+                    alert(data.messages || '{{ trans("general.error") }}');
+                });
+            }
+        });
+    };
+
     var child_formatters = [
         ['kits', 'models'],
         ['kits', 'licenses'],

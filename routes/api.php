@@ -262,19 +262,33 @@ Route::group(['prefix' => 'v1', 'middleware' => ['api', 'api-throttle:api']], fu
         )->name('api.components.assets');
 
     });
-    Route::post('components/{id}/checkin',
+    Route::post('components/serials/{serialId}/checkin',
         [
             Api\ComponentsController::class,
             'checkin',
         ]
     )->name('api.components.checkin');
 
-    Route::post('components/{id}/checkout',
+    Route::post('components/{component}/checkout',
         [
             Api\ComponentsController::class,
             'checkout',
         ]
     )->name('api.components.checkout');
+
+    // Component serials routes
+    Route::group(['prefix' => 'components/{component}/serials'], function () {
+        Route::get('/', [Api\ComponentsController::class, 'listSerials'])
+            ->name('api.components.serials.index');
+        Route::get('{serialId}', [Api\ComponentsController::class, 'showSerial'])
+            ->name('api.components.serials.show');
+        Route::post('/', [Api\ComponentsController::class, 'storeSerial'])
+            ->name('api.components.serials.store');
+        Route::put('{serialId}', [Api\ComponentsController::class, 'updateSerial'])
+            ->name('api.components.serials.update');
+        Route::delete('{serialId}', [Api\ComponentsController::class, 'deleteSerial'])
+            ->name('api.components.serials.destroy');
+    });
 
     Route::resource('components',
         Api\ComponentsController::class,

@@ -50,16 +50,41 @@
           <!-- Asset -->
             @include ('partials.forms.edit.asset-select', ['translated_name' => trans('general.select_asset'), 'fieldname' => 'asset_id', 'company_id' => $component->company_id, 'required' => 'true', 'value' => old('asset_id')])
 
-            <div class="form-group {{ $errors->has('assigned_qty') ? ' has-error' : '' }}">
-              <label for="assigned_qty" class="col-md-3 control-label">
-                {{ trans('general.qty') }}
+            <!-- Available Serials -->
+            <div class="form-group {{ $errors->has('serial_ids') ? ' has-error' : '' }}">
+              <label for="serial_ids" class="col-md-3 control-label">
+                {{ trans('admin/hardware/form.serial') }}
               </label>
-              <div class="col-md-2 col-sm-5 col-xs-5">
-                  <input class="form-control" type="number" name="assigned_qty" id="assigned_qty" value="1" min="1" max="{{ old('assigned_qty') ?? $component->numRemaining()}}" maxlength="999999"/>
+              <div class="col-md-8">
+                @php $availableSerials = $component->availableSerials; @endphp
+                @if ($availableSerials->isEmpty())
+                  <div class="callout callout-warning">
+                    <p>{{ trans('admin/components/general.no_available_serials') }}</p>
+                  </div>
+                @else
+                  <table class="table table-striped table-condensed">
+                    <thead>
+                      <tr>
+                        <th><input type="checkbox" id="select_all_serials"></th>
+                        <th>{{ trans('admin/hardware/form.serial') }}</th>
+                        <th>{{ trans('general.notes') }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @foreach ($availableSerials as $serial)
+                        <tr>
+                          <td><input type="checkbox" name="serial_ids[]" value="{{ $serial->id }}" class="serial-checkbox"></td>
+                          <td>{{ $serial->serial }}</td>
+                          <td>{{ $serial->notes }}</td>
+                        </tr>
+                      @endforeach
+                    </tbody>
+                  </table>
+                @endif
               </div>
-              @if ($errors->first('assigned_qty'))
+              @if ($errors->first('serial_ids'))
                 <div class="col-md-9 col-md-offset-3">
-                  {!! $errors->first('assigned_qty', '<span class="alert-msg" aria-hidden="true"><i class="fas fa-times" aria-hidden="true"></i> :message</span>') !!}
+                  {!! $errors->first('serial_ids', '<span class="alert-msg" aria-hidden="true"><i class="fas fa-times" aria-hidden="true"></i> :message</span>') !!}
                 </div>
               @endif
             </div>

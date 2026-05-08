@@ -7,6 +7,7 @@ use App\Helpers\Helper;
 use App\Http\Controllers\Controller;
 use App\Models\Asset;
 use App\Models\Component;
+use App\Models\ComponentSerial;
 use App\Models\Setting;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
@@ -82,16 +83,10 @@ class ComponentCheckoutController extends Controller
 
         $this->authorize('checkout', $component);
 
-        $max_to_checkout = $component->numRemaining();
-
-        // Make sure there are at least the requested number of components available to checkout
-        if ($max_to_checkout < $request->input('assigned_qty')) {
-            return redirect()->back()->withInput()->with('error', trans('admin/components/message.checkout.unavailable', ['remaining' => $max_to_checkout, 'requested' => $request->input('assigned_qty')]));
-        }
-
         $validator = Validator::make($request->all(), [
             'asset_id' => 'required|exists:assets,id',
-            'assigned_qty' => "required|numeric|min:1|digits_between:1,$max_to_checkout",
+            'serial_ids' => 'required|array|min:1',
+            'serial_ids.*' => 'exists:component_serials,id',
         ]);
 
         if ($validator->fails()) {
@@ -100,25 +95,25 @@ class ComponentCheckoutController extends Controller
                 ->withInput();
         }
 
-        // Check if the asset exists
         $asset = Asset::find($request->input('asset_id'));
 
         if ((Setting::getSettings()->full_multiple_companies_support) && $component->company_id !== $asset->company_id) {
             return redirect()->route('components.checkout.show', $componentId)->with('error', trans('general.error_user_company'));
         }
 
-        $component->checkout_qty = $request->input('assigned_qty');
+        // Look up the serials, ensuring they belong to this component and are available
+        $serials = ComponentSerial::where('component_id', $component->id)
+            ->whereIn('id', $request->input('serial_ids'))
+            ->where('status', ComponentSerial::STATUS_AVAILABLE)
+            ->get();
 
-        // Update the component data
-        $component->asset_id = $request->input('asset_id');
-        $component->assets()->attach($component->id, [
-            'component_id' => $component->id,
-            'created_by' => auth()->user()->id,
-            'created_at' => date('Y-m-d H:i:s'),
-            'assigned_qty' => $component->checkout_qty,
-            'asset_id' => $request->input('asset_id'),
-            'note' => $request->input('note'),
-        ]);
+        if ($serials->count() !== count($request->input('serial_ids'))) {
+            return redirect()->back()->withInput()->with('error', 'One or more serials are not available for checkout.');
+        }
+
+        foreach ($serials as $serial) {
+            $serial->checkout($asset->id, $request->input('note'));
+        }
 
         event(new CheckoutableCheckedOut(
             $component,
@@ -126,7 +121,7 @@ class ComponentCheckoutController extends Controller
             auth()->user(),
             $request->input('note'),
             [],
-            $component->checkout_qty,
+            $serials->count(),
         ));
 
         $request->request->add(['checkout_to_type' => 'asset']);

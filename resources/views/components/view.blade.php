@@ -24,6 +24,13 @@
                             count="{{ $snipe_component->numCheckedOut() }}"
                     />
 
+                    <x-tabs.nav-item
+                            name="serials"
+                            icon_type="barcode"
+                            label="{{ trans('admin/components/general.serial_numbers') }}"
+                            count="{{ $snipe_component->serials->count() }}"
+                    />
+
                     <x-tabs.files-tab :item="$snipe_component" count="{{ $snipe_component->uploads()->count() }}"/>
                     <x-tabs.history-tab count="{{ $snipe_component->history()->count() }}" :model="$snipe_component"/>
                     <x-tabs.upload-tab :item="$snipe_component"/>
@@ -41,6 +48,19 @@
                         <x-table
                             :presenter="\App\Presenters\ComponentPresenter::checkedOut()"
                             :api_url="route('api.components.assets', $snipe_component)"
+                        />
+
+                    </x-tabs.pane>
+
+                    <x-tabs.pane name="serials">
+
+                        <x-slot:table_header>
+                            {{ trans('admin/components/general.serial_numbers') }}
+                        </x-slot:table_header>
+
+                        <x-table
+                            :presenter="\App\Presenters\ComponentPresenter::serials()"
+                            :api_url="route('api.components.serials.index', $snipe_component)"
                         />
 
                     </x-tabs.pane>

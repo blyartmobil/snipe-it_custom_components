@@ -5,109 +5,70 @@ namespace App\Http\Controllers\Components;
 use App\Events\CheckoutableCheckedIn;
 use App\Helpers\Helper;
 use App\Http\Controllers\Controller;
-use App\Models\Asset;
 use App\Models\Component;
+use App\Models\ComponentSerial;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 
 class ComponentCheckinController extends Controller
 {
     /**
-     * Returns a view that allows the checkin of a component from an asset.
+     * Returns a view for checking in a component serial from an asset.
      *
-     * @author [A. Gianotto] [<snipe@snipe.net>]
-     *
-     * @see ComponentCheckinController::store() method that stores the data.
      * @since [v4.1.4]
-     *
+     * @param int $serialId The ID of the ComponentSerial being checked in.
      * @return View
-     *
      * @throws AuthorizationException
      */
-    public function create($component_asset_id)
+    public function create($serialId)
     {
+        if ($serial = ComponentSerial::with(['component', 'asset'])->find($serialId)) {
+            $component = $serial->component;
 
-        // This could probably be done more cleanly but I am very tired. - @snipe
-        if ($component_assets = DB::table('components_assets')->find($component_asset_id)) {
-            if (is_null($component = Component::find($component_assets->component_id))) {
+            if (! $component) {
                 return redirect()->route('components.index')->with('error', trans('admin/components/messages.not_found'));
             }
-            if (is_null($asset = Asset::find($component_assets->asset_id))) {
-                return redirect()->route('components.index')->with('error',
-                    trans('admin/components/message.not_found'));
-            }
-            $this->authorize('checkin', $component);
 
-            return view('components/checkin', compact('component_assets', 'component', 'asset'));
+            $this->authorize('checkin', $component);
+            $asset = $serial->asset;
+
+            return view('components/checkin', compact('serial', 'component', 'asset'));
         }
 
         return redirect()->route('components.index')->with('error', trans('admin/components/messages.not_found'));
     }
 
     /**
-     * Validate and store checkin data.
+     * Process the checkin of a component serial.
      *
-     * @author [A. Gianotto] [<snipe@snipe.net>]
-     *
-     * @see ComponentCheckinController::create() method that returns the form.
      * @since [v4.1.4]
-     *
      * @return RedirectResponse
-     *
      * @throws AuthorizationException
      */
-    public function store(Request $request, $component_asset_id, $backto = null)
+    public function store(Request $request, $serialId, $backto = null)
     {
-        if ($component_assets = DB::table('components_assets')->find($component_asset_id)) {
-            if (is_null($component = Component::find($component_assets->component_id))) {
+        $serial = ComponentSerial::with('component.asset')->find($serialId);
 
-                return redirect()->route('components.index')->with('error',
-                    trans('admin/components/message.not_found'));
-            }
-
-            $this->authorize('checkin', $component);
-
-            $max_to_checkin = $component_assets->assigned_qty;
-            $validator = Validator::make($request->all(), [
-                'checkin_qty' => "required|numeric|between:1,$max_to_checkin",
-            ]);
-
-            if ($validator->fails()) {
-                return redirect()->back()
-                    ->withErrors($validator)
-                    ->withInput();
-            }
-
-            // Validation passed, so let's figure out what we have to do here.
-            $qty_remaining_in_checkout = ($component_assets->assigned_qty - (int) $request->input('checkin_qty'));
-
-            // We have to modify the record to reflect the new qty that's
-            // actually checked out.
-            $component_assets->assigned_qty = $qty_remaining_in_checkout;
-            DB::table('components_assets')->where('id',
-                $component_asset_id)->update(['assigned_qty' => $qty_remaining_in_checkout]);
-
-            // If the checked-in qty is exactly the same as the assigned_qty,
-            // we can simply delete the associated components_assets record
-            if ($qty_remaining_in_checkout == 0) {
-                DB::table('components_assets')->where('id', '=', $component_asset_id)->delete();
-            }
-
-            $asset = Asset::find($component_assets->asset_id);
-
-            event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
-
-            session()->put(['redirect_option' => $request->input('redirect_option')]);
-
-            return Helper::getRedirectOption($request, $component->id, 'Components')
-                ->with('success', trans('admin/components/message.checkin.success'));
+        if (! $serial || ! $serial->component) {
+            return redirect()->route('components.index')->with('error', trans('admin/components/message.not_found'));
         }
 
-        return redirect()->route('components.index')->with('error', trans('admin/components/message.does_not_exist'));
+        $component = $serial->component;
+        $this->authorize('checkin', $component);
+        $asset = $serial->asset;
+
+        $serial->checkin($request->input('note'));
+
+        if ($asset) {
+            event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
+        }
+
+        session()->put(['redirect_option' => $request->input('redirect_option')]);
+
+        return Helper::getRedirectOption($request, $component->id, 'Components')
+            ->with('success', trans('admin/components/message.checkin.success'));
     }
 }

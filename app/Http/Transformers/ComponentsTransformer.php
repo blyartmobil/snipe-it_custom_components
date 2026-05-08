@@ -4,6 +4,7 @@ namespace App\Http\Transformers;
 
 use App\Helpers\Helper;
 use App\Models\Component;
+use App\Models\ComponentSerial;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -69,6 +70,9 @@ class ComponentsTransformer
             'created_at' => Helper::getFormattedDateObject($component->created_at, 'datetime'),
             'updated_at' => Helper::getFormattedDateObject($component->updated_at, 'datetime'),
             'user_can_checkout' => ($component->numRemaining() > 0) ? 1 : 0,
+            'total_serials' => (int) $component->serials()->count(),
+            'available_serials' => (int) $component->availableSerials()->count(),
+            'checked_out_serials' => (int) $component->checkedOutSerials()->count(),
         ];
 
         $permissions_array['available_actions'] = [
@@ -86,14 +90,23 @@ class ComponentsTransformer
     public function transformCheckedoutComponents(Collection $components_assets, $total)
     {
         $array = [];
-        foreach ($components_assets as $asset) {
+        foreach ($components_assets as $serial) {
+            $asset = $serial->asset;
+            $assigned_asset = null;
+            if ($asset) {
+                $compact = (new AssetsTransformer)->transformAssetCompact($asset);
+                $assigned_asset = array_merge($compact, ['type' => 'asset']);
+            }
             $array[] = [
-                'assigned_pivot_id' => (int) $asset->pivot->id,
-                'name' => $this->transformAssignedTo($asset),
-                'qty' => $asset->pivot->assigned_qty, // legacy?
-                'assigned_qty' => $asset->pivot->assigned_qty,
-                'note' => ($asset->pivot->note) ? e($asset->pivot->note) : null,
-                'created_at' => Helper::getFormattedDateObject($asset->pivot->created_at, 'datetime'),
+                'serial_id' => (int) $serial->id,
+                'serial_number' => e($serial->serial),
+                'assigned_asset' => $assigned_asset,
+                'note' => ($serial->notes) ? e($serial->notes) : null,
+                'created_by' => $serial->adminuser ? [
+                    'id' => (int) $serial->adminuser->id,
+                    'name' => e($serial->adminuser->display_name),
+                ] : null,
+                'created_at' => Helper::getFormattedDateObject($serial->created_at, 'datetime'),
                 'available_actions' => ['checkin' => true],
             ];
         }
@@ -104,5 +117,41 @@ class ComponentsTransformer
     public function transformAssignedTo($componentCheckout)
     {
         return (new AssetsTransformer)->transformAssetCompact($componentCheckout);
+    }
+
+    /**
+     * Transform a single ComponentSerial for API responses.
+     */
+    public function transformSerial(ComponentSerial $serial)
+    {
+        return [
+            'id' => (int) $serial->id,
+            'component_id' => (int) $serial->component_id,
+            'serial' => e($serial->serial),
+            'status' => $serial->status,
+            'asset' => $serial->asset ? array_merge((new AssetsTransformer)->transformAssetCompact($serial->asset), ['type' => 'asset']) : null,
+            'notes' => ($serial->notes) ? Helper::parseEscapedMarkedownInline($serial->notes) : null,
+            'checkout_at' => Helper::getFormattedDateObject($serial->checkout_at, 'datetime'),
+            'created_at' => Helper::getFormattedDateObject($serial->created_at, 'datetime'),
+            'updated_at' => Helper::getFormattedDateObject($serial->updated_at, 'datetime'),
+            'available_actions' => [
+                'checkin' => $serial->isCheckedOut(),
+                'status_change' => true,
+                'delete' => ! $serial->isCheckedOut(),
+            ],
+        ];
+    }
+
+    /**
+     * Transform a collection of serials for paginated API responses.
+     */
+    public function transformSerials(Collection $serials, $total)
+    {
+        $array = [];
+        foreach ($serials as $serial) {
+            $array[] = $this->transformSerial($serial);
+        }
+
+        return (new DatatablesTransformer)->transformDatatables($array, $total);
     }
 }

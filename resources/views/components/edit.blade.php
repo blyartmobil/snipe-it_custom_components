@@ -18,9 +18,22 @@
 
 @include ('partials.forms.edit.name', ['translated_name' => trans('admin/components/table.title')])
 @include ('partials.forms.edit.category-select', ['translated_name' => trans('general.category'), 'fieldname' => 'category_id','category_type' => 'component'])
-@include ('partials.forms.edit.quantity')
+
+<!-- Serials (one per line) -->
+<div class="form-group {{ $errors->has('serials') ? ' has-error' : '' }}">
+    <label for="serials" class="col-md-3 control-label">{{ trans('admin/components/general.serial_numbers') }}</label>
+    <div class="col-md-7">
+        <textarea class="form-control" id="serials" name="serials" rows="5" placeholder="{{ trans('admin/components/general.serials_placeholder') }}">{{ old('serials', isset($item) && $item->exists ? $item->serials->pluck('serial')->implode("\n") : '') }}</textarea>
+        @if ($errors->has('serials'))
+            <span class="help-block">
+                <strong>{{ $errors->first('serials') }}</strong>
+            </span>
+        @endif
+        <span class="help-block">{{ trans('admin/components/general.serials_help') }}</span>
+    </div>
+</div>
+
 @include ('partials.forms.edit.minimum_quantity')
-@include ('partials.forms.edit.serial', ['fieldname' => 'serial'])
 @include ('partials.forms.edit.manufacturer-select', ['translated_name' => trans('general.manufacturer'), 'fieldname' => 'manufacturer_id'])
 @include ('partials.forms.edit.model_number')
 @include ('partials.forms.edit.company-select', ['translated_name' => trans('general.company'), 'fieldname' => 'company_id'])

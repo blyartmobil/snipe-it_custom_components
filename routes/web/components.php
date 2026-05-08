@@ -16,12 +16,12 @@ Route::group(['prefix' => 'components', 'middleware' => ['auth']], function () {
     )->name('components.checkout.store');
 
     Route::get(
-        '{componentID}/checkin/{backto?}',
+        '{serialID}/checkin/{backto?}',
         [Components\ComponentCheckinController::class, 'create']
     )->name('components.checkin.show');
 
     Route::post(
-        '{componentID}/checkin/{backto?}',
+        '{serialID}/checkin/{backto?}',
         [Components\ComponentCheckinController::class, 'store']
     )->name('components.checkin.store');
 
