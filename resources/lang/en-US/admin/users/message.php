@@ -48,6 +48,8 @@ return [
         'import' => 'There was an issue importing users. Please try again.',
         'asset_already_accepted' => 'This item has already been accepted.',
         'accept_or_decline' => 'You must either accept or decline this asset.',
+        'assigned_item_declined' => 'By declining this item, you are indicating that you do not have it in your possession. This may trigger notification alerts to your administrator.',
+        'invalid_acceptance_token' => 'This acceptance link is invalid or has already been used. Please contact your administrator if you need assistance.',
         'cannot_delete_yourself' => 'We would feel really bad if you deleted yourself, please reconsider.',
         'incorrect_user_accepted' => 'The asset you have attempted to accept was not checked out to you.',
         'ldap_could_not_connect' => 'Could not connect to the LDAP server. Please check your LDAP server configuration in the LDAP config file. <br>Error from LDAP Server:',

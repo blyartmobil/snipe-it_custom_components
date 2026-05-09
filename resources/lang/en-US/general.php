@@ -753,6 +753,7 @@ return [
     'months_plural' => '1 month|:count months',
 
     'token_unrevoked' => 'API token reinstated',
+    'you_may_close_this_page' => 'You may close this page.',
     'token_revoked' => 'API token revoked',
 
 ];

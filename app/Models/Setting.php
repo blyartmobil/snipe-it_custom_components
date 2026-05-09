@@ -65,12 +65,14 @@ class Setting extends Model
         'google_client_id',
         'google_client_secret',
         'manager_view_enabled',
+        'guest_acceptance_enabled',
     ];
 
     protected $casts = [
         'label2_asset_logo' => 'boolean',
         'require_checkinout_notes' => 'boolean',
         'manager_view_enabled' => 'boolean',
+        'guest_acceptance_enabled' => 'boolean',
     ];
 
     /**

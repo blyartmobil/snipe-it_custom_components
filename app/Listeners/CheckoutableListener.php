@@ -302,6 +302,11 @@ class CheckoutableListener
             $acceptance->alert_on_response_id = auth()->id();
         }
 
+        // Generate a unique validation token for direct/guest acceptance
+        // This is used when the assigned user's login is disabled (activated = 0)
+        // and they need to accept the item via a non-guessable URL link
+        $acceptance->validation_token = Str::uuid()->toString();
+
         $acceptance->save();
 
         return $acceptance;

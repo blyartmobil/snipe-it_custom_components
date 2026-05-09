@@ -707,6 +707,31 @@ Route::group(['middleware' => 'web'], function () {
 
 /*
 |--------------------------------------------------------------------------
+| Direct Guest Acceptance Routes (public, no auth required)
+|--------------------------------------------------------------------------
+|
+| These routes allow users who have their Snipe-IT login disabled
+| (activated = 0) to accept or decline asset/accessory checkouts via
+| a unique, non-guessable UUID token sent in the checkout email.
+|
+*/
+Route::get(
+    '/acceptance/complete',
+    [\App\Http\Controllers\DirectAcceptanceController::class, 'complete']
+)->name('direct.acceptance.complete');
+
+Route::get(
+    '/acceptance/{token}',
+    [\App\Http\Controllers\DirectAcceptanceController::class, 'show']
+)->name('direct.acceptance.show');
+
+Route::post(
+    '/acceptance/{token}',
+    [\App\Http\Controllers\DirectAcceptanceController::class, 'store']
+)->name('direct.acceptance.store');
+
+/*
+|--------------------------------------------------------------------------
 | Storage Proxy Route
 |--------------------------------------------------------------------------
 |

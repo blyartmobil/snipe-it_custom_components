@@ -58,6 +58,13 @@ class CheckoutAccessoryMail extends BaseMailable
         $eula = $this->item->getEula();
         $req_accept = $this->item->requireAcceptance();
         $accept_url = is_null($this->acceptance) ? null : route('account.accept.item', $this->acceptance);
+
+        // Generate direct (tokenized) acceptance URL for users with disabled login
+        $direct_accept_url = null;
+        if ($this->acceptance && ! empty($this->acceptance->validation_token)) {
+            $direct_accept_url = route('direct.acceptance.show', $this->acceptance->validation_token);
+        }
+
         $name = null;
 
         if ($this->target instanceof User) {
@@ -78,6 +85,7 @@ class CheckoutAccessoryMail extends BaseMailable
                 'eula' => $eula,
                 'req_accept' => $req_accept,
                 'accept_url' => $accept_url,
+                'direct_accept_url' => $direct_accept_url,
                 'checkout_qty' => $this->checkout_qty,
                 'introduction_line' => $this->introductionLine(),
             ],

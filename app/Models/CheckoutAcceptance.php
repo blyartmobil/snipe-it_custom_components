@@ -18,9 +18,13 @@ class CheckoutAcceptance extends Model
     use HasFactory, Notifiable, SoftDeletes;
 
     protected $casts = [
-        'accepted_at' => 'datetime',
-        'declined_at' => 'datetime',
+        'accepted_at'   => 'datetime',
+        'declined_at'   => 'datetime',
         'alert_on_response_id' => 'integer',
+    ];
+
+    protected $fillable = [
+        'validation_token',
     ];
 
     /**
@@ -178,6 +182,23 @@ class CheckoutAcceptance extends Model
     public function scopeDeclined(Builder $query)
     {
         return $query->whereNull('accepted_at')->whereNotNull('declined_at');
+    }
+
+    /**
+     * Find an acceptance by its validation token, ensuring it is still pending.
+     */
+    public static function findByValidationToken(string $token): ?self
+    {
+        return self::where('validation_token', $token)->pending()->first();
+    }
+
+    /**
+     * Invalidate the token after use (single-use).
+     */
+    public function invalidateToken(): void
+    {
+        $this->validation_token = null;
+        $this->save();
     }
 
     protected function displayCheckoutableType(): Attribute

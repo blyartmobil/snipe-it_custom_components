@@ -44,6 +44,13 @@
 
 @if ($req_accept == 1)
 **[✔ {{ trans('mail.i_have_read') }}]({{ $accept_url }})**
+
+@if ($direct_accept_url)
+{{ trans('mail.direct_acceptance_note') }}
+
+**[→ {{ trans('mail.direct_acceptance_link') }}]({{ $direct_accept_url }})**
+@endif
+
 @endif
 
 

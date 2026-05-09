@@ -36,6 +36,8 @@ return [
     'acceptance_asset_accepted_to_user' => 'You have accepted an item assigned to you by :site_name|You have accepted :qty items assigned to you by :site_name',
     'acceptance_accepted' => 'ACCEPTED: :user has accepted :item',
     'acceptance_declined' => 'DECLINED: :user has declined :item',
+    'direct_acceptance_note' => 'If you are unable to log in, use the alternative acceptance link below:',
+    'direct_acceptance_link' => 'Quick Acceptance Link (no login required)',
     'acceptance_accepted_greeting' => ':user has accepted an item:',
     'acceptance_declined_greeting' => ':user has declined an item',
     'send_pdf_copy' => 'Send a copy of this acceptance to my email address',

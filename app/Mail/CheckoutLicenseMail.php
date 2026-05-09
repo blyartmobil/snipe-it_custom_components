@@ -62,6 +62,12 @@ class CheckoutLicenseMail extends BaseMailable
 
         $accept_url = is_null($this->acceptance) ? null : route('account.accept.item', $this->acceptance);
 
+        // Generate direct (tokenized) acceptance URL for users with disabled login
+        $direct_accept_url = null;
+        if ($this->acceptance && ! empty($this->acceptance->validation_token)) {
+            $direct_accept_url = route('direct.acceptance.show', $this->acceptance->validation_token);
+        }
+
         return new Content(
             markdown: 'mail.markdown.checkout-license',
             with: [
@@ -73,6 +79,7 @@ class CheckoutLicenseMail extends BaseMailable
                 'eula' => $eula,
                 'req_accept' => $req_accept,
                 'accept_url' => $accept_url,
+                'direct_accept_url' => $direct_accept_url,
                 'introduction_line' => $this->introductionLine(),
             ]
         );
