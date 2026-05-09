@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Components;
 
-use App\Events\CheckoutableCheckedOut;
 use App\Helpers\Helper;
 use App\Http\Controllers\Controller;
 use App\Models\Asset;
 use App\Models\Component;
 use App\Models\ComponentSerial;
 use App\Models\Setting;
+use App\Services\ComponentService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +18,10 @@ use Illuminate\Support\Facades\Validator;
 
 class ComponentCheckoutController extends Controller
 {
+    public function __construct(
+        private readonly ComponentService $componentService,
+    ) {}
+
     /**
      * Returns a view that allows the checkout of a component to an asset.
      *
@@ -103,34 +107,16 @@ class ComponentCheckoutController extends Controller
         }
 
         // Look up the serials, ensuring they belong to this component and are available
-        $serials = ComponentSerial::where('component_id', $component->id)
+        $availableCount = ComponentSerial::where('component_id', $component->id)
             ->whereIn('id', $request->input('serial_ids'))
             ->where('status', ComponentSerial::STATUS_AVAILABLE)
-            ->get();
+            ->count();
 
-        if ($serials->count() !== count($request->input('serial_ids'))) {
+        if ($availableCount !== count($request->input('serial_ids'))) {
             return redirect()->back()->withInput()->with('error', 'One or more serials are not available for checkout.');
         }
 
-        DB::transaction(function () use ($serials, $asset, $request, $component) {
-            // Capture original values BEFORE performing checkout
-            $originalValues = $serials->map(function ($s) {
-                return ['id' => $s->id, 'status' => $s->getOriginal('status'), 'asset_id' => $s->getOriginal('asset_id')];
-            })->all();
-
-            foreach ($serials as $serial) {
-                $serial->checkout($asset->id, $request->input('note'));
-            }
-
-            event(new CheckoutableCheckedOut(
-                $component,
-                $asset,
-                auth()->user(),
-                $request->input('note'),
-                $originalValues,
-                $serials->count(),
-            ));
-        });
+        $this->componentService->checkout($component, $asset, $request->input('serial_ids'), $request->input('note'));
 
         $request->request->add(['checkout_to_type' => 'asset']);
         $request->request->add(['assigned_asset' => $asset->id]);

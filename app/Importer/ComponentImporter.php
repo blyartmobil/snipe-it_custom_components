@@ -4,6 +4,7 @@ namespace App\Importer;
 
 use App\Models\Asset;
 use App\Models\Component;
+use App\Models\ComponentSerial;
 
 class ComponentImporter extends ItemImporter
 {
@@ -56,15 +57,22 @@ class ComponentImporter extends ItemImporter
         if ($component->save()) {
             $this->log('Component '.$this->item['name'].' was created');
 
-            // If we have an asset tag, checkout to that asset.
+            // If we have an asset tag, checkout to that asset using the serials table.
             if (isset($this->item['asset_tag']) && ($asset = Asset::where('asset_tag', $this->item['asset_tag'])->first())) {
-                $component->assets()->attach($component->id, [
-                    'component_id' => $component->id,
-                    'created_by' => auth()->id(),
-                    'created_at' => date('Y-m-d H:i:s'),
-                    'assigned_qty' => 1, // Only assign the first one to the asset
-                    'asset_id' => $asset->id,
-                ]);
+                // Find an available serial or create one if none exist
+                $serial = $component->serials()->where('status', ComponentSerial::STATUS_AVAILABLE)->first();
+
+                if (! $serial) {
+                    // Create a new serial entry
+                    $serialNumber = trim($this->item['serial'] ?? '') ?: 'CSV-' . $component->id . '-' . str_pad(1, 4, '0', STR_PAD_LEFT);
+                    $serial = $component->serials()->create([
+                        'serial'     => $serialNumber,
+                        'status'     => ComponentSerial::STATUS_AVAILABLE,
+                        'created_by' => auth()->id(),
+                    ]);
+                }
+
+                $serial->checkout($asset->id, null);
             }
 
             return;

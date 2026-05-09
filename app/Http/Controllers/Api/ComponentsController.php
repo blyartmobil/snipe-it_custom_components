@@ -7,12 +7,14 @@ use App\Events\CheckoutableCheckedOut;
 use App\Helpers\Helper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ImageUploadRequest;
+use App\Http\Resources\ComponentResource;
+use App\Http\Resources\ComponentSerialResource;
 use App\Http\Transformers\ActionlogsTransformer;
-use App\Http\Transformers\ComponentsTransformer;
 use App\Models\Asset;
 use App\Models\Company;
 use App\Models\Component;
 use App\Models\ComponentSerial;
+use App\Services\ComponentService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -23,6 +25,10 @@ use Illuminate\Support\Facades\Validator;
 
 class ComponentsController extends Controller
 {
+    public function __construct(
+        private readonly ComponentService $componentService,
+    ) {}
+
     /**
      * Display a listing of the resource.
      *
@@ -155,7 +161,7 @@ class ComponentsController extends Controller
         $total = $components_count;
         $components = $components->skip($offset)->take($limit)->get();
 
-        return (new ComponentsTransformer)->transformComponents($components, $total);
+        return ComponentResource::collection($components)->additional(['total' => $total]);
     }
 
     /**
@@ -193,7 +199,7 @@ class ComponentsController extends Controller
         $component = Component::findOrFail($id);
 
         if ($component) {
-            return (new ComponentsTransformer)->transformComponent($component);
+            return new ComponentResource($component);
         }
     }
 
@@ -274,7 +280,7 @@ class ComponentsController extends Controller
         $total = $serials->count();
         $serials = $serials->skip($offset)->take($limit)->get();
 
-        return (new ComponentsTransformer)->transformCheckedoutComponents($serials, $total);
+        return ComponentSerialResource::collection($serials)->additional(['total' => $total]);
     }
 
     /**
@@ -302,37 +308,9 @@ class ComponentsController extends Controller
 
         $asset = Asset::find($request->input('assigned_to'));
 
-        // Look up the serials, ensuring they belong to this component and are available.
-        $serials = ComponentSerial::where('component_id', $component->id)
-            ->whereIn('id', $request->input('serial_ids'))
-            ->where('status', ComponentSerial::STATUS_AVAILABLE)
-            ->get();
-
-        if ($serials->count() !== count($request->input('serial_ids'))) {
+        if ($this->componentService->checkout($component, $asset, $request->input('serial_ids'), $request->input('note'))->isEmpty()) {
             return response()->json(Helper::formatStandardApiResponse('error', null, 'One or more serials are not available for checkout.'));
         }
-
-        DB::transaction(function () use ($serials, $asset, $request, $component) {
-            // Capture original values BEFORE performing checkout
-            $originalValues = $serials->map(function ($s) {
-                return ['id' => $s->id, 'status' => $s->getOriginal('status'), 'asset_id' => $s->getOriginal('asset_id')];
-            })->all();
-
-            foreach ($serials as $serial) {
-                $serial->checkout($asset->id, $request->input('note'));
-            }
-
-            $component->syncQtyFromSerials();
-
-            event(new CheckoutableCheckedOut(
-                $component,
-                $asset,
-                auth()->user(),
-                $request->input('note'),
-                $originalValues,
-                $serials->count(),
-            ));
-        });
 
         return response()->json(Helper::formatStandardApiResponse('success', null, trans('admin/components/message.checkout.success')));
     }
@@ -357,16 +335,7 @@ class ComponentsController extends Controller
         $component = $serial->component;
         $this->authorize('checkin', $component);
 
-        $asset = $serial->asset;
-
-        DB::transaction(function () use ($serial, $request, $component, $asset) {
-            $serial->checkin($request->input('note'));
-            $component->syncQtyFromSerials();
-
-            if ($asset) {
-                event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
-            }
-        });
+        $this->componentService->checkin($serial, $request->input('note'));
 
         return response()->json(Helper::formatStandardApiResponse('success', null, trans('admin/components/message.checkin.success')));
     }
@@ -393,37 +362,9 @@ class ComponentsController extends Controller
             return response()->json(Helper::formatStandardApiResponse('error', $validator->errors()));
         }
 
-        $serials = ComponentSerial::where('component_id', $component->id)
-            ->whereIn('id', $request->input('serial_ids'))
-            ->get();
+        $result = $this->componentService->bulkCheckin($component, $request->input('serial_ids'), $request->input('note'));
 
-        $checkedIn = 0;
-        $skipped = 0;
-
-        DB::transaction(function () use ($serials, $request, $component, &$checkedIn, &$skipped) {
-            foreach ($serials as $serial) {
-                if (! $serial->isCheckedOut()) {
-                    $skipped++;
-                    continue;
-                }
-
-                $asset = $serial->asset;
-                $serial->checkin($request->input('note'));
-
-                if ($asset) {
-                    event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
-                }
-
-                $checkedIn++;
-            }
-
-            $component->syncQtyFromSerials();
-        });
-
-        return response()->json(Helper::formatStandardApiResponse('success', [
-            'checked_in' => $checkedIn,
-            'skipped' => $skipped,
-        ], trans('admin/components/message.checkin.success')));
+        return response()->json(Helper::formatStandardApiResponse('success', $result, trans('admin/components/message.checkin.success')));
     }
 
     /**
@@ -444,9 +385,7 @@ class ComponentsController extends Controller
         $limit = $request->input('limit', 50);
         $serials = $serials->skip($offset)->take($limit)->get();
 
-        $transformer = new ComponentsTransformer;
-
-        return $transformer->transformSerials($serials, $total);
+        return ComponentSerialResource::collection($serials)->additional(['total' => $total]);
     }
 
     /**
@@ -457,7 +396,7 @@ class ComponentsController extends Controller
         $this->authorize('view', $component);
         $serial = $component->serials()->findOrFail($serialId);
 
-        return (new ComponentsTransformer)->transformSerial($serial);
+        return new ComponentSerialResource($serial);
     }
 
     /**
@@ -477,18 +416,10 @@ class ComponentsController extends Controller
             return response()->json(Helper::formatStandardApiResponse('error', $validator->errors()));
         }
 
-        $created = [];
-        DB::transaction(function () use ($request, $component, &$created) {
-            foreach ($request->input('serials') as $data) {
-                $serialObj = $component->serials()->create([
-                    'serial' => $data['serial'],
-                    'status' => ComponentSerial::STATUS_AVAILABLE,
-                    'notes' => $data['notes'] ?? null,
-                ]);
-                $created[] = $serialObj;
-            }
-            $component->syncQtyFromSerials();
-        });
+        $created = $this->componentService->createSerials(
+            $component,
+            $request->input('serials'),
+        );
 
         return response()->json(Helper::formatStandardApiResponse('success', $created, 'Serials added successfully.'));
     }
@@ -511,12 +442,9 @@ class ComponentsController extends Controller
             return response()->json(Helper::formatStandardApiResponse('error', $validator->errors()));
         }
 
-        DB::transaction(function () use ($serial, $request, $component) {
-            $serial->update($request->only(['serial', 'status', 'notes']));
-            $component->syncQtyFromSerials();
-        });
+        $serial = $this->componentService->updateSerial($serial, $request->only(['serial', 'status', 'notes']));
 
-        return response()->json(Helper::formatStandardApiResponse('success', $serial->fresh(), 'Serial updated.'));
+        return response()->json(Helper::formatStandardApiResponse('success', $serial, 'Serial updated.'));
     }
 
     /**
@@ -527,19 +455,14 @@ class ComponentsController extends Controller
         $this->authorize('update', $component);
         $serial = $component->serials()->findOrFail($serialId);
 
-        if ($serial->isCheckedOut()) {
+        if (! $this->componentService->deleteSerial($serial)) {
             return response()->json(Helper::formatStandardApiResponse('error', null, 'Cannot delete a checked-out serial.'));
         }
-
-        DB::transaction(function () use ($serial, $component) {
-            $serial->delete();
-            $component->syncQtyFromSerials();
-        });
 
         return response()->json(Helper::formatStandardApiResponse('success', null, 'Serial deleted.'));
     }
 
-    public function history(Request $request, Component $component): JsonResponse|array
+    public function history(Request $request, Component $component): JsonResponse
     {
         $this->authorize('history', $component);
         $historyQuery = $component->getHistory($request);

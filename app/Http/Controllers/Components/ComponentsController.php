@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\ImageUploadRequest;
 use App\Models\Company;
 use App\Models\Component;
+use App\Services\ComponentService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +23,10 @@ use Illuminate\Support\Facades\Storage;
  */
 class ComponentsController extends Controller
 {
+    public function __construct(
+        private readonly ComponentService $componentService,
+    ) {}
+
     /**
      * Returns a view that invokes the ajax tables which actually contains
      * the content for the components listing, which is generated in getDatatable.
@@ -104,17 +109,10 @@ class ComponentsController extends Controller
             // Process serial numbers from the textarea
             $serialInput = $request->input('serials');
             if (! empty($serialInput)) {
-                DB::transaction(function () use ($component, $serialInput) {
-                    $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
-                    $serialLines = array_filter(array_map('trim', $serialLines));
-                    foreach ($serialLines as $serialNumber) {
-                        $component->serials()->create([
-                            'serial' => $serialNumber,
-                            'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
-                        ]);
-                    }
-                    $component->syncQtyFromSerials();
-                });
+                $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
+                $serialLines = array_filter(array_map('trim', $serialLines));
+                $serialsData = array_map(fn(string $s): array => ['serial' => $s], $serialLines);
+                $this->componentService->createSerials($component, $serialsData);
             }
 
             return Helper::getRedirectOption($request, $component->id, 'components')
@@ -222,7 +220,6 @@ class ComponentsController extends Controller
                         }
                     }
 
-                    $component->syncQtyFromSerials();
                 });
             }
 
