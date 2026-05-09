@@ -404,7 +404,7 @@ class Component extends SnipeModel
     public function totalCostSum()
     {
 
-        return $this->purchase_cost !== null ? $this->qty * $this->purchase_cost : null;
+        return $this->purchase_cost !== null ? $this->serials()->withTrashed()->count() * $this->purchase_cost : null;
     }
     /**
      * -----------------------------------------------

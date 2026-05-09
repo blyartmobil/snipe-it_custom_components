@@ -79,7 +79,7 @@ class ComponentSerial extends SnipeModel
             'status'      => self::STATUS_CHECKED_OUT,
             'asset_id'    => $assetId,
             'checkout_at' => now(),
-            'notes'       => $note ?: $this->notes,
+            'notes'       => $note ?? $this->notes,
         ]);
     }
 
@@ -92,7 +92,7 @@ class ComponentSerial extends SnipeModel
             'status'      => self::STATUS_AVAILABLE,
             'asset_id'    => null,
             'checkout_at' => null,
-            'notes'       => $note ?: $this->notes,
+            'notes'       => $note ?? $this->notes,
         ]);
     }
 }

@@ -62,7 +62,10 @@ class ComponentsController extends Controller
             ];
 
         $components = Component::select('components.*')
-            ->with('company', 'location', 'category', 'supplier', 'adminuser', 'manufacturer');
+            ->with('company', 'location', 'category', 'supplier', 'adminuser', 'manufacturer')
+            ->withCount('serials')
+            ->withCount(['serials as available_serials_count' => fn($q) => $q->where('status', 'available')])
+            ->withCount(['serials as checked_out_serials_count' => fn($q) => $q->where('status', 'checked_out')]);
 
         $filter = [];
 
@@ -310,19 +313,26 @@ class ComponentsController extends Controller
         }
 
         DB::transaction(function () use ($serials, $asset, $request, $component) {
+            // Capture original values BEFORE performing checkout
+            $originalValues = $serials->map(function ($s) {
+                return ['id' => $s->id, 'status' => $s->getOriginal('status'), 'asset_id' => $s->getOriginal('asset_id')];
+            })->all();
+
             foreach ($serials as $serial) {
                 $serial->checkout($asset->id, $request->input('note'));
             }
-        });
 
-        event(new CheckoutableCheckedOut(
-            $component,
-            $asset,
-            auth()->user(),
-            $request->input('note'),
-            [],
-            $serials->count(),
-        ));
+            $component->syncQtyFromSerials();
+
+            event(new CheckoutableCheckedOut(
+                $component,
+                $asset,
+                auth()->user(),
+                $request->input('note'),
+                $originalValues,
+                $serials->count(),
+            ));
+        });
 
         return response()->json(Helper::formatStandardApiResponse('success', null, trans('admin/components/message.checkout.success')));
     }
@@ -351,6 +361,7 @@ class ComponentsController extends Controller
 
         DB::transaction(function () use ($serial, $request, $component, $asset) {
             $serial->checkin($request->input('note'));
+            $component->syncQtyFromSerials();
 
             if ($asset) {
                 event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
@@ -361,11 +372,66 @@ class ComponentsController extends Controller
     }
 
     /**
+     * Checkin multiple serials from a component at once.
+     *
+     * @since [v5.1.8]
+     */
+    public function bulkCheckin(Request $request, Component $component): JsonResponse
+    {
+        if (! $component) {
+            return response()->json(Helper::formatStandardApiResponse('error', null, trans('admin/components/message.does_not_exist')));
+        }
+
+        $this->authorize('checkin', $component);
+
+        $validator = Validator::make($request->all(), [
+            'serial_ids' => 'required|array|min:1',
+            'serial_ids.*' => 'exists:component_serials,id',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(Helper::formatStandardApiResponse('error', $validator->errors()));
+        }
+
+        $serials = ComponentSerial::where('component_id', $component->id)
+            ->whereIn('id', $request->input('serial_ids'))
+            ->get();
+
+        $checkedIn = 0;
+        $skipped = 0;
+
+        DB::transaction(function () use ($serials, $request, $component, &$checkedIn, &$skipped) {
+            foreach ($serials as $serial) {
+                if (! $serial->isCheckedOut()) {
+                    $skipped++;
+                    continue;
+                }
+
+                $asset = $serial->asset;
+                $serial->checkin($request->input('note'));
+
+                if ($asset) {
+                    event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
+                }
+
+                $checkedIn++;
+            }
+
+            $component->syncQtyFromSerials();
+        });
+
+        return response()->json(Helper::formatStandardApiResponse('success', [
+            'checked_in' => $checkedIn,
+            'skipped' => $skipped,
+        ], trans('admin/components/message.checkin.success')));
+    }
+
+    /**
      * List all serials for a component.
      */
     public function listSerials(Component $component, Request $request): array
     {
-        $this->authorize('view', Component::class);
+        $this->authorize('view', $component);
 
         $serials = $component->serials()->with('asset');
 
@@ -388,7 +454,7 @@ class ComponentsController extends Controller
      */
     public function showSerial(Component $component, $serialId): array
     {
-        $this->authorize('view', Component::class);
+        $this->authorize('view', $component);
         $serial = $component->serials()->findOrFail($serialId);
 
         return (new ComponentsTransformer)->transformSerial($serial);
@@ -403,7 +469,7 @@ class ComponentsController extends Controller
 
         $validator = Validator::make($request->all(), [
             'serials' => 'required|array|min:1',
-            'serials.*.serial' => 'required|string|max:191|unique:component_serials,serial',
+            'serials.*.serial' => "required|string|distinct|max:191|unique:component_serials,serial,NULL,id,component_id,{$component->id}",
             'serials.*.notes' => 'nullable|string',
         ]);
 
@@ -436,7 +502,7 @@ class ComponentsController extends Controller
         $serial = $component->serials()->findOrFail($serialId);
 
         $validator = Validator::make($request->all(), [
-            'serial' => "sometimes|string|max:191|unique:component_serials,serial,{$serial->id}",
+            'serial' => "sometimes|string|max:191|unique:component_serials,serial,{$serial->id},id,component_id,{$component->id}",
             'status' => 'sometimes|string|in:available,checked_out,defective,retired',
             'notes' => 'nullable|string',
         ]);
@@ -445,9 +511,12 @@ class ComponentsController extends Controller
             return response()->json(Helper::formatStandardApiResponse('error', $validator->errors()));
         }
 
-        $serial->update($request->only(['serial', 'status', 'notes']));
+        DB::transaction(function () use ($serial, $request, $component) {
+            $serial->update($request->only(['serial', 'status', 'notes']));
+            $component->syncQtyFromSerials();
+        });
 
-        return response()->json(Helper::formatStandardApiResponse('success', $serial, 'Serial updated.'));
+        return response()->json(Helper::formatStandardApiResponse('success', $serial->fresh(), 'Serial updated.'));
     }
 
     /**
@@ -462,8 +531,10 @@ class ComponentsController extends Controller
             return response()->json(Helper::formatStandardApiResponse('error', null, 'Cannot delete a checked-out serial.'));
         }
 
-        $serial->delete();
-        $component->syncQtyFromSerials();
+        DB::transaction(function () use ($serial, $component) {
+            $serial->delete();
+            $component->syncQtyFromSerials();
+        });
 
         return response()->json(Helper::formatStandardApiResponse('success', null, 'Serial deleted.'));
     }

@@ -118,7 +118,7 @@
             <div class="form-group{{ $errors->has('note') ? ' error' : '' }}">
               <label for="note" class="col-md-3 control-label">{{ trans('admin/hardware/form.notes') }}</label>
               <div class="col-md-7">
-                <textarea class="col-md-6 form-control" id="note" name="note">{{ old('note', $component->note) }}</textarea>
+                <textarea class="col-md-6 form-control" id="note" name="note">{{ old('note', $component->notes) }}</textarea>
                 {!! $errors->first('note', '<span class="alert-msg" aria-hidden="true"><i class="fas fa-times" aria-hidden="true"></i> :message</span>') !!}
               </div>
             </div>
@@ -140,4 +140,15 @@
   </div> <!-- .col-md-9-->
 </div> <!-- .row -->
 
+@stop
+
+@section('moar_scripts')
+<script>
+    document.getElementById('select_all_serials').addEventListener('change', function() {
+        var checkboxes = document.querySelectorAll('.serial-checkbox');
+        for (var i = 0; i < checkboxes.length; i++) {
+            checkboxes[i].checked = this.checked;
+        }
+    });
+</script>
 @stop

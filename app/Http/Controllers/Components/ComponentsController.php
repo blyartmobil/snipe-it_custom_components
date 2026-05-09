@@ -10,9 +10,9 @@ use App\Models\Component;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Validator;
 
 /**
  * This class controls all actions related to Components for
@@ -104,18 +104,20 @@ class ComponentsController extends Controller
             // Process serial numbers from the textarea
             $serialInput = $request->input('serials');
             if (! empty($serialInput)) {
-                $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
-                $serialLines = array_filter(array_map('trim', $serialLines));
-                foreach ($serialLines as $serialNumber) {
-                    $component->serials()->create([
-                        'serial' => $serialNumber,
-                        'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
-                    ]);
-                }
-                $component->syncQtyFromSerials();
+                DB::transaction(function () use ($component, $serialInput) {
+                    $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
+                    $serialLines = array_filter(array_map('trim', $serialLines));
+                    foreach ($serialLines as $serialNumber) {
+                        $component->serials()->create([
+                            'serial' => $serialNumber,
+                            'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
+                        ]);
+                    }
+                    $component->syncQtyFromSerials();
+                });
             }
 
-            return Helper::getRedirectOption($request, $component->id, 'Components')
+            return Helper::getRedirectOption($request, $component->id, 'components')
                 ->with('success', trans('admin/components/message.create.success'));
         }
 
@@ -185,38 +187,53 @@ class ComponentsController extends Controller
         if ($component->save()) {
             // Process serial numbers from the textarea
             $serialInput = $request->input('serials');
+            $skippedCheckedOut = 0;
             if ($serialInput !== null) {
-                $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
-                $serialLines = array_filter(array_map('trim', $serialLines));
+                DB::transaction(function () use ($component, $serialInput, &$skippedCheckedOut) {
+                    $serialLines = preg_split('/\r\n|\r|\n/', trim($serialInput));
+                    $serialLines = array_filter(array_map('trim', $serialLines));
 
-                // Get existing serial numbers for comparison
-                $existingSerials = $component->serials->pluck('serial')->all();
+                    // Get existing serial numbers for comparison
+                    $existingSerials = $component->serials->pluck('serial')->all();
 
-                // Delete serials that were removed from the textarea
-                $removedSerials = array_diff($existingSerials, $serialLines);
-                if (! empty($removedSerials)) {
-                    $component->serials()
-                        ->whereIn('serial', $removedSerials)
-                        ->where('status', \App\Models\ComponentSerial::STATUS_AVAILABLE)
-                        ->delete();
-                }
+                    // Delete serials that were removed from the textarea
+                    $removedSerials = array_diff($existingSerials, $serialLines);
+                    if (! empty($removedSerials)) {
+                        // Count how many removed serials are currently checked out (and thus can't be deleted)
+                        $skippedCheckedOut = $component->serials()
+                            ->whereIn('serial', $removedSerials)
+                            ->where('status', \App\Models\ComponentSerial::STATUS_CHECKED_OUT)
+                            ->count();
 
-                // Add new serials that don't exist yet
-                $existingNotDeleted = array_diff($existingSerials, $removedSerials);
-                foreach ($serialLines as $serialNumber) {
-                    if (! in_array($serialNumber, $existingNotDeleted)) {
-                        $component->serials()->create([
-                            'serial' => $serialNumber,
-                            'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
-                        ]);
+                        $component->serials()
+                            ->whereIn('serial', $removedSerials)
+                            ->where('status', \App\Models\ComponentSerial::STATUS_AVAILABLE)
+                            ->delete();
                     }
-                }
 
-                $component->syncQtyFromSerials();
+                    // Add new serials that don't exist yet
+                    $existingNotDeleted = array_diff($existingSerials, $removedSerials);
+                    foreach ($serialLines as $serialNumber) {
+                        if (! in_array($serialNumber, $existingNotDeleted)) {
+                            $component->serials()->create([
+                                'serial' => $serialNumber,
+                                'status' => \App\Models\ComponentSerial::STATUS_AVAILABLE,
+                            ]);
+                        }
+                    }
+
+                    $component->syncQtyFromSerials();
+                });
             }
 
-            return Helper::getRedirectOption($request, $component->id, 'Components')
+            $redirect = Helper::getRedirectOption($request, $component->id, 'components')
                 ->with('success', trans('admin/components/message.update.success'));
+
+            if (! empty($skippedCheckedOut)) {
+                $redirect->with('warning', trans('admin/components/message.update.serials_checked_out_warning', ['count' => $skippedCheckedOut]));
+            }
+
+            return $redirect;
         }
 
         return redirect()->back()->withInput()->withErrors($component->getErrors());
@@ -288,9 +305,12 @@ class ComponentsController extends Controller
         $cloned_component->id = null;
         $cloned_component->deleted_at = null;
 
+        $serials = $component->serials->pluck('serial')->implode("\n");
+
         // Show the page
         return view('components/edit')
             ->with('item', $cloned_component)
-            ->with('component', $cloned_component);
+            ->with('component', $cloned_component)
+            ->with('serials', $serials);
     }
 }

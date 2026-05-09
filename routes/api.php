@@ -269,6 +269,13 @@ Route::group(['prefix' => 'v1', 'middleware' => ['api', 'api-throttle:api']], fu
         ]
     )->name('api.components.checkin');
 
+    Route::post('components/{component}/checkin',
+        [
+            Api\ComponentsController::class,
+            'bulkCheckin',
+        ]
+    )->name('api.components.bulk-checkin');
+
     Route::post('components/{component}/checkout',
         [
             Api\ComponentsController::class,

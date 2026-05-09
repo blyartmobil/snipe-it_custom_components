@@ -2,6 +2,9 @@ name: Tests in Postgres
 
 on: workflow_dispatch
 
+permissions:
+  contents: read
+
 jobs:
   tests:
     runs-on: ubuntu-latest

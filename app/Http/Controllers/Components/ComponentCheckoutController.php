@@ -13,6 +13,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class ComponentCheckoutController extends Controller
@@ -111,25 +112,32 @@ class ComponentCheckoutController extends Controller
             return redirect()->back()->withInput()->with('error', 'One or more serials are not available for checkout.');
         }
 
-        foreach ($serials as $serial) {
-            $serial->checkout($asset->id, $request->input('note'));
-        }
+        DB::transaction(function () use ($serials, $asset, $request, $component) {
+            // Capture original values BEFORE performing checkout
+            $originalValues = $serials->map(function ($s) {
+                return ['id' => $s->id, 'status' => $s->getOriginal('status'), 'asset_id' => $s->getOriginal('asset_id')];
+            })->all();
 
-        event(new CheckoutableCheckedOut(
-            $component,
-            $asset,
-            auth()->user(),
-            $request->input('note'),
-            [],
-            $serials->count(),
-        ));
+            foreach ($serials as $serial) {
+                $serial->checkout($asset->id, $request->input('note'));
+            }
+
+            event(new CheckoutableCheckedOut(
+                $component,
+                $asset,
+                auth()->user(),
+                $request->input('note'),
+                $originalValues,
+                $serials->count(),
+            ));
+        });
 
         $request->request->add(['checkout_to_type' => 'asset']);
         $request->request->add(['assigned_asset' => $asset->id]);
 
         session()->put(['redirect_option' => $request->input('redirect_option'), 'checkout_to_type' => $request->input('checkout_to_type')]);
 
-        return Helper::getRedirectOption($request, $component->id, 'Components')
+        return Helper::getRedirectOption($request, $component->id, 'components')
             ->with('success', trans('admin/components/message.checkout.success'));
     }
 }

@@ -70,9 +70,9 @@ class ComponentsTransformer
             'created_at' => Helper::getFormattedDateObject($component->created_at, 'datetime'),
             'updated_at' => Helper::getFormattedDateObject($component->updated_at, 'datetime'),
             'user_can_checkout' => ($component->numRemaining() > 0) ? 1 : 0,
-            'total_serials' => (int) $component->serials()->count(),
-            'available_serials' => (int) $component->availableSerials()->count(),
-            'checked_out_serials' => (int) $component->checkedOutSerials()->count(),
+            'total_serials' => isset($component->serials_count) ? (int) $component->serials_count : (int) $component->serials()->count(),
+            'available_serials' => isset($component->available_serials_count) ? (int) $component->available_serials_count : (int) $component->availableSerials()->count(),
+            'checked_out_serials' => isset($component->checked_out_serials_count) ? (int) $component->checked_out_serials_count : (int) $component->checkedOutSerials()->count(),
         ];
 
         $permissions_array['available_actions'] = [

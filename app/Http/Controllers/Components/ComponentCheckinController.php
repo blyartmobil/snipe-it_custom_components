@@ -12,6 +12,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 class ComponentCheckinController extends Controller
 {
@@ -29,7 +30,7 @@ class ComponentCheckinController extends Controller
             $component = $serial->component;
 
             if (! $component) {
-                return redirect()->route('components.index')->with('error', trans('admin/components/messages.not_found'));
+                return redirect()->route('components.index')->with('error', trans('admin/components/message.not_found'));
             }
 
             $this->authorize('checkin', $component);
@@ -38,7 +39,7 @@ class ComponentCheckinController extends Controller
             return view('components/checkin', compact('serial', 'component', 'asset'));
         }
 
-        return redirect()->route('components.index')->with('error', trans('admin/components/messages.not_found'));
+        return redirect()->route('components.index')->with('error', trans('admin/components/message.not_found'));
     }
 
     /**
@@ -50,7 +51,7 @@ class ComponentCheckinController extends Controller
      */
     public function store(Request $request, $serialId, $backto = null)
     {
-        $serial = ComponentSerial::with('component.asset')->find($serialId);
+        $serial = ComponentSerial::with(['component', 'asset'])->find($serialId);
 
         if (! $serial || ! $serial->component) {
             return redirect()->route('components.index')->with('error', trans('admin/components/message.not_found'));
@@ -60,15 +61,17 @@ class ComponentCheckinController extends Controller
         $this->authorize('checkin', $component);
         $asset = $serial->asset;
 
-        $serial->checkin($request->input('note'));
+        DB::transaction(function () use ($serial, $request, $component, $asset) {
+            $serial->checkin($request->input('note'));
 
-        if ($asset) {
-            event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
-        }
+            if ($asset) {
+                event(new CheckoutableCheckedIn($component, $asset, auth()->user(), $request->input('note'), Carbon::now()));
+            }
+        });
 
         session()->put(['redirect_option' => $request->input('redirect_option')]);
 
-        return Helper::getRedirectOption($request, $component->id, 'Components')
+        return Helper::getRedirectOption($request, $component->id, 'components')
             ->with('success', trans('admin/components/message.checkin.success'));
     }
 }

@@ -159,7 +159,7 @@
      */
     function shuffle(o)
     {
-        for(var j, x, i = o.length; i; j = parseInt(Math.random() * i), x = o[--i], o[i] = o[j], o[j] = x);
+        for(var j, x, i = o.length; i; j = parseInt((window.crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296) * i), x = o[--i], o[i] = o[j], o[j] = x);
 
         return o;
     }
@@ -174,7 +174,7 @@
      */
     function randomFromInterval(from, to)
     {
-        return Math.floor(Math.random()*(to-from+1)+from);
+        return Math.floor((window.crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296)*(to-from+1)+from);
     }
 
     /**

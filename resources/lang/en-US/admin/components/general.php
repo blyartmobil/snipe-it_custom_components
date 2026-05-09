@@ -16,4 +16,8 @@ return [
     'serial_numbers' => 'Serial Numbers',
     'serials_placeholder' => 'Enter serial numbers, one per line',
     'serials_help' => 'Each serial number represents an individual unit that can be checked out separately. Quantity is auto-calculated from the number of serials.',
+    'no_available_serials' => 'No available serials to check out.',
+    'update' => [
+        'serials_checked_out_warning' => ':count serial(s) are currently checked out and could not be removed.',
+    ],
 ];
