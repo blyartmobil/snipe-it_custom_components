@@ -174,7 +174,18 @@
      */
     function randomFromInterval(from, to)
     {
-        return Math.floor((window.crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296)*(to-from+1)+from);
+        var range = to - from + 1;
+        var maxUint32 = 4294967296; // 2^32
+        var limit = Math.floor(maxUint32 / range) * range;
+        var randomValue;
+        var randomBuffer = new Uint32Array(1);
+
+        do {
+            window.crypto.getRandomValues(randomBuffer);
+            randomValue = randomBuffer[0];
+        } while (randomValue >= limit);
+
+        return from + (randomValue % range);
     }
 
     /**
