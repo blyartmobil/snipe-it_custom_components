@@ -5355,7 +5355,17 @@ ${expression ? 'Expression: "' + expression + '"\n\n' : ""}`, el);
     return null;
   }
   function getModuleUrl() {
-    return document.querySelector("[data-module-url]")?.getAttribute("data-module-url") ?? window.livewireScriptConfig["moduleUrl"] ?? null;
+    let rawModuleUrl = document.querySelector("[data-module-url]")?.getAttribute("data-module-url") ?? window.livewireScriptConfig["moduleUrl"] ?? null;
+    if (!rawModuleUrl)
+      return null;
+    try {
+      let parsed = new URL(rawModuleUrl, window.location.origin);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+        return null;
+      return parsed.href.replace(/\/$/, "");
+    } catch (e) {
+      return null;
+    }
   }
   function getUpdateUri() {
     return document.querySelector("[data-update-uri]")?.getAttribute("data-update-uri") ?? window.livewireScriptConfig["uri"] ?? null;
