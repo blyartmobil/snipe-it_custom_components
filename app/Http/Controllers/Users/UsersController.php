@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
+use League\Csv\EscapeFormula;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -572,6 +573,8 @@ class UsersController extends Controller
 
                     fputcsv($handle, $headers);
 
+                    $formatter = new EscapeFormula('`');
+
                     foreach ($users as $user) {
                         $user_groups = '';
 
@@ -614,7 +617,14 @@ class UsersController extends Controller
                             $user->created_at,
                         ];
 
-                        fputcsv($handle, $values);
+                        // CSV_ESCAPE_FORMULAS is set to false in the .env
+                        if (config('app.escape_formulas') === false) {
+                            fputcsv($handle, $values);
+
+                            // CSV_ESCAPE_FORMULAS is set to true or is not set in the .env
+                        } else {
+                            fputcsv($handle, $formatter->escapeRecord($values));
+                        }
                     }
                 });
 

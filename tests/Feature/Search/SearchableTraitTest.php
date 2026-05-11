@@ -900,6 +900,70 @@ class SearchableTraitTest extends TestCase
     }
 
     /**
+     * Regression: "is_not:" should perform an exact exclusion (not fuzzy).
+     */
+    public function test_exact_exclusion_filter_with_is_not_prefix_on_attribute()
+    {
+        Asset::factory()->create(['name' => 'Dell', 'asset_tag' => 'ISNOT-ATTR-001']);
+        Asset::factory()->create(['name' => 'Dell XPS 13', 'asset_tag' => 'ISNOT-ATTR-002']);
+        Asset::factory()->create(['name' => 'HP Pavilion', 'asset_tag' => 'ISNOT-ATTR-003']);
+
+        $this->actingAsForApi(User::factory()->viewAssets()->create())
+            ->getJson(route('api.assets.index', [
+                'filter' => json_encode(['name' => 'is_not:Dell']),
+            ]))
+            ->assertOk()
+            ->assertJson(fn (AssertableJson $json) => $json->has('rows', 2)->etc());
+    }
+
+    /**
+     * Regression: "is_not:" on relations should exclude only exact relation values.
+     */
+    public function test_exact_exclusion_filter_with_is_not_prefix_on_relation()
+    {
+        $apple = Manufacturer::factory()->create(['name' => 'Apple']);
+        $appleInc = Manufacturer::factory()->create(['name' => 'Apple Inc']);
+        $dell = Manufacturer::factory()->create(['name' => 'Dell']);
+
+        $appleModel = AssetModel::factory()->create(['manufacturer_id' => $apple->id]);
+        $appleIncModel = AssetModel::factory()->create(['manufacturer_id' => $appleInc->id]);
+        $dellModel = AssetModel::factory()->create(['manufacturer_id' => $dell->id]);
+
+        Asset::factory()->create(['model_id' => $appleModel->id, 'asset_tag' => 'ISNOT-REL-001']);
+        Asset::factory()->create(['model_id' => $appleIncModel->id, 'asset_tag' => 'ISNOT-REL-002']);
+        Asset::factory()->create(['model_id' => $dellModel->id, 'asset_tag' => 'ISNOT-REL-003']);
+
+        $this->actingAsForApi(User::factory()->viewAssets()->create())
+            ->getJson(route('api.assets.index', [
+                'filter' => json_encode(['manufacturer' => 'is_not:Apple']),
+            ]))
+            ->assertOk()
+            ->assertJson(fn (AssertableJson $json) => $json->has('rows', 2)->etc());
+    }
+
+    /**
+     * Regression: "is_not:" should perform exact exclusion on custom fields.
+     */
+    public function test_exact_exclusion_filter_with_is_not_prefix_on_custom_field()
+    {
+        $field = CustomField::factory()->cpu()->create();
+        $dbColumn = $field->db_column_name();
+
+        Asset::factory()->create([$dbColumn => 'Intel', 'asset_tag' => 'ISNOT-CF-001']);
+        Asset::factory()->create([$dbColumn => 'Intel Core i9', 'asset_tag' => 'ISNOT-CF-002']);
+        Asset::factory()->create([$dbColumn => 'AMD Ryzen 7', 'asset_tag' => 'ISNOT-CF-003']);
+
+        Asset::flushCustomFieldFilterMap();
+
+        $this->actingAsForApi(User::factory()->viewAssets()->create())
+            ->getJson(route('api.assets.index', [
+                'filter' => json_encode([$dbColumn => 'is_not:Intel']),
+            ]))
+            ->assertOk()
+            ->assertJson(fn (AssertableJson $json) => $json->has('rows', 2)->etc());
+    }
+
+    /**
      * Test negation filter using "!" prefix on a direct attribute.
      * filter={"name":"!Dell"} should return all assets whose name does NOT contain "Dell".
      */
