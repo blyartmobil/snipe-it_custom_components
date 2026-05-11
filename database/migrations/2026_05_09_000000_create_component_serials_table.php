@@ -11,6 +11,11 @@ return new class extends Migration
 {
     public function up()
     {
+        // Skip if table already exists
+        if (Schema::hasTable('component_serials')) {
+            return;
+        }
+
         // 1. Create the component_serials table
         Schema::create('component_serials', function (Blueprint $table) {
             $table->id();
