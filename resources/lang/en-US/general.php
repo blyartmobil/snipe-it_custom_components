@@ -609,7 +609,7 @@ return [
     'search_operator' => 'Search operator',
     'and' => 'and',
     'action_source' => 'Action Source',
-    'search_tip' => 'Searches return a partial match by default. For more specific results, you can use <code>not:value</code> to exclude, <code>is:value</code> for an exact match, <code>is:null</code> for empty values, and <code>is:not_null</code> for non-empty. (In these examples, <code>value</code> is the text you are searching for.)',
+    'search_tip' => 'Searches return a partial match by default. For more specific results, you can use <code>not:value</code> to fuzzy-exclude, <code>is:value</code> for an exact match, <code>is_not:value</code> for an exact exclusion, <code>is:null</code> for empty values, and <code>is:not_null</code> for non-empty. (In these examples, <code>value</code> is the text you are searching for.)',
     'or' => 'or',
     'url' => 'URL',
     'phone' => 'Phone',
